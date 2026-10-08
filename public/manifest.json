@@ -1,0 +1,8 @@
+{
+  "short_name": "Token Desk Admin",
+  "name": "Token Desk Admin",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#071018",
+  "background_color": "#071018"
+}
