@@ -16,7 +16,7 @@ async function request(path, options = {}) {
   if (token) headers.Authorization = `Bearer ${token}`;
   const response = await fetch(`${API}${path}`, { ...options, headers });
   const data = await response.json().catch(() => ({}));
-  if (response.status === 401) setToken('');
+  if (response.status === 401 && !path.endsWith('/login')) setToken('');
   if (!response.ok || data.success === false) {
     const error = new Error(data.message || 'Request failed');
     error.status = response.status;
@@ -26,30 +26,63 @@ async function request(path, options = {}) {
 }
 
 export function login(username, password) {
-  return request('/admin/login', {
-    method: 'POST',
-    body: JSON.stringify({ username, password }),
-  });
+  return request('/admin/login', { method: 'POST', body: JSON.stringify({ username, password }) });
 }
 
 export function me() {
   return request('/admin/me');
 }
 
-export function getPayoutWallets() {
-  return request('/admin/payout-wallets');
+export function changePassword(currentPassword, password) {
+  return request('/admin/password', { method: 'PUT', body: JSON.stringify({ currentPassword, password }) });
 }
 
-export function createPayoutWallet(body) {
-  return request('/admin/payout-wallets', { method: 'POST', body: JSON.stringify(body) });
+export function getUsers() {
+  return request('/admin/users');
 }
 
-export function updatePayoutWallet(id, body) {
-  return request(`/admin/payout-wallets/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+export function createUser(body) {
+  return request('/admin/users', { method: 'POST', body: JSON.stringify(body) });
 }
 
-export function deletePayoutWallet(id) {
-  return request(`/admin/payout-wallets/${id}`, { method: 'DELETE' });
+export function setUserPassword(id, password) {
+  return request(`/admin/users/${id}/password`, { method: 'PUT', body: JSON.stringify({ password }) });
+}
+
+export function setUserStatus(id, active) {
+  return request(`/admin/users/${id}/status`, { method: 'PUT', body: JSON.stringify({ active }) });
+}
+
+export function adjustUserWallet(id, body) {
+  return request(`/admin/users/${id}/wallet`, { method: 'POST', body: JSON.stringify(body) });
+}
+
+export function getTopups() {
+  return request('/admin/topups');
+}
+
+export function reviewTopup(id, body) {
+  return request(`/admin/topups/${id}/review`, { method: 'POST', body: JSON.stringify(body) });
+}
+
+export function getHotWallets() {
+  return request('/admin/hot-wallets');
+}
+
+export function createHotWallet() {
+  return request('/admin/hot-wallets', { method: 'POST', body: '{}' });
+}
+
+export function revealHotWallet(id) {
+  return request(`/admin/hot-wallets/${id}/secret`);
+}
+
+export function transferBnb(id, body) {
+  return request(`/admin/hot-wallets/${id}/transfer-bnb`, { method: 'POST', body: JSON.stringify(body) });
+}
+
+export function transferUsdt(id, body) {
+  return request(`/admin/hot-wallets/${id}/transfer-usdt`, { method: 'POST', body: JSON.stringify(body) });
 }
 
 export function getDeposits() {
@@ -58,4 +91,12 @@ export function getDeposits() {
 
 export function retryDeposit(id) {
   return request(`/admin/deposits/${id}/retry`, { method: 'POST', body: '{}' });
+}
+
+export function getSettings() {
+  return request('/admin/settings');
+}
+
+export function saveSettings(body) {
+  return request('/admin/settings', { method: 'PUT', body: JSON.stringify(body) });
 }

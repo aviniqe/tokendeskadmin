@@ -1,294 +1,123 @@
+import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import {
-  createPayoutWallet,
-  deletePayoutWallet,
-  getDeposits,
-  getPayoutWallets,
-  getToken,
-  login,
-  me,
-  retryDeposit,
-  setToken,
-  updatePayoutWallet,
-} from './services/api';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { HiOutlineArrowRightOnRectangle } from 'react-icons/hi2';
+import { getToken, login, me, setToken } from './services/api';
+import Field from './components/Field';
+import Shell from './components/Shell';
+import { ShellSkeleton } from './components/Skeleton';
+import { useForm } from './hooks/useForm';
+import { required } from './lib/validators';
+import DashboardPage from './pages/DashboardPage';
+import UsersPage from './pages/UsersPage';
+import TopupsPage from './pages/TopupsPage';
+import PoolPage from './pages/PoolPage';
+import DepositsPage from './pages/DepositsPage';
+import SettingsPage from './pages/SettingsPage';
 import './App.css';
 
-const emptyForm = { label: '', address: '', percent: '', active: true };
+const loginRules = {
+  username: required('Username'),
+  password: required('Password'),
+};
+
+function LoginScreen({ onSuccess }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const loginForm = useForm({ username: '', password: '' }, loginRules);
+  const [error, setError] = useState('');
+
+  async function onLogin(event) {
+    event.preventDefault();
+    setError('');
+    if (!loginForm.validate()) return;
+    try {
+      const data = await login(loginForm.values.username.trim(), loginForm.values.password);
+      setToken(data.token);
+      onSuccess(data.admin);
+      const next = location.state?.from;
+      navigate(next && next !== '/login' ? next : '/', { replace: true });
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  return (
+    <main className="login">
+      <motion.section className="login__story" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }}>
+        <span className="brand__mark">TD</span>
+        <h1>Token Desk</h1>
+        <p>Approve charge-wallet top-ups, create the USDT address pool, and set the split charge.</p>
+      </motion.section>
+      <section className="login__panel">
+        <motion.form noValidate onSubmit={onLogin} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+          <p className="kicker">Admin</p>
+          <h2>Sign in</h2>
+          <Field name="username" label="Username" error={loginForm.error('username')}>
+            <input
+              value={loginForm.values.username}
+              onChange={(event) => loginForm.setField('username', event.target.value)}
+              onBlur={() => loginForm.blur('username')}
+              placeholder="Enter your username"
+              autoComplete="username"
+            />
+          </Field>
+          <Field name="password" label="Password" error={loginForm.error('password')}>
+            <input
+              type="password"
+              value={loginForm.values.password}
+              onChange={(event) => loginForm.setField('password', event.target.value)}
+              onBlur={() => loginForm.blur('password')}
+              placeholder="Enter your password"
+              autoComplete="current-password"
+            />
+          </Field>
+          {loginForm.summary && <p className="form-alert" role="alert">{loginForm.summary}</p>}
+          {error && <p className="form-alert" role="alert">{error}</p>}
+          <button type="submit" className="primary"><HiOutlineArrowRightOnRectangle /> Sign in</button>
+        </motion.form>
+      </section>
+    </main>
+  );
+}
+
+function RequireAdmin({ admin, onSignOut }) {
+  const location = useLocation();
+  if (!admin) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  return <Shell account={admin} onSignOut={onSignOut} />;
+}
 
 export default function App() {
   const [admin, setAdmin] = useState(null);
   const [ready, setReady] = useState(false);
-  const [page, setPage] = useState('payouts');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!getToken()) {
       setReady(true);
       return;
     }
-    me()
-      .then((data) => setAdmin(data.admin))
-      .catch(() => setToken(''))
-      .finally(() => setReady(true));
+    me().then((data) => setAdmin(data.admin)).catch(() => setToken('')).finally(() => setReady(true));
   }, []);
 
-  async function onLogin(event) {
-    event.preventDefault();
-    setError('');
-    try {
-      const data = await login(username, password);
-      setToken(data.token);
-      setAdmin(data.admin);
-      setPassword('');
-    } catch (err) {
-      setError(err.message);
-    }
-  }
+  if (!ready) return <ShellSkeleton />;
 
-  if (!ready) return <main className="admin"><p>Loading…</p></main>;
-
-  if (!admin) {
-    return (
-      <main className="admin admin--login">
-        <form className="panel" onSubmit={onLogin}>
-          <p className="kicker">Token Desk</p>
-          <h1>Admin sign in</h1>
-          <label>
-            Username
-            <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
-          </label>
-          <label>
-            Password
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
-          </label>
-          {error && <p className="error">{error}</p>}
-          <button type="submit">Sign in</button>
-        </form>
-      </main>
-    );
+  function signOut() {
+    setToken('');
+    setAdmin(null);
   }
 
   return (
-    <div className="shell">
-      <aside>
-        <strong>Token Desk</strong>
-        <button type="button" className={page === 'payouts' ? 'is-on' : ''} onClick={() => setPage('payouts')}>Payout wallets</button>
-        <button type="button" className={page === 'deposits' ? 'is-on' : ''} onClick={() => setPage('deposits')}>Deposits</button>
-        <button
-          type="button"
-          className="ghost"
-          onClick={() => {
-            setToken('');
-            setAdmin(null);
-          }}
-        >
-          Sign out
-        </button>
-      </aside>
-      <main className="admin">
-        {page === 'payouts' ? <Payouts /> : <Deposits />}
-      </main>
-    </div>
-  );
-}
-
-function Payouts() {
-  const [wallets, setWallets] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [form, setForm] = useState(emptyForm);
-  const [editing, setEditing] = useState(null);
-  const [error, setError] = useState('');
-
-  async function load() {
-    const data = await getPayoutWallets();
-    setWallets(data.wallets);
-    setTotal(data.totalPercent);
-  }
-
-  useEffect(() => {
-    load().catch((err) => setError(err.message));
-  }, []);
-
-  function setField(key, value) {
-    setForm((current) => ({ ...current, [key]: value }));
-  }
-
-  async function onSubmit(event) {
-    event.preventDefault();
-    setError('');
-    const body = {
-      label: form.label,
-      address: form.address,
-      percent: Number(form.percent),
-      active: form.active,
-    };
-    try {
-      if (editing) await updatePayoutWallet(editing, body);
-      else await createPayoutWallet(body);
-      setForm(emptyForm);
-      setEditing(null);
-      await load();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  return (
-    <section>
-      <header className="head">
-        <div>
-          <h1>Payout wallets</h1>
-          <p>Active wallets must total 100%. The last wallet receives any rounding remainder.</p>
-        </div>
-        <span className={Math.abs(total - 100) < 0.0001 ? 'ok' : 'warn'}>{total}% active</span>
-      </header>
-      <form className="panel grid" onSubmit={onSubmit}>
-        <label>
-          Label
-          <input value={form.label} onChange={(event) => setField('label', event.target.value)} required />
-        </label>
-        <label>
-          Address
-          <input value={form.address} onChange={(event) => setField('address', event.target.value)} required />
-        </label>
-        <label>
-          Percent
-          <input type="number" min="0.0001" max="100" step="0.0001" value={form.percent} onChange={(event) => setField('percent', event.target.value)} required />
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={form.active} onChange={(event) => setField('active', event.target.checked)} />
-          Active
-        </label>
-        {error && <p className="error">{error}</p>}
-        <div className="actions">
-          <button type="submit">{editing ? 'Save wallet' : 'Add wallet'}</button>
-          {editing && (
-            <button type="button" className="ghost" onClick={() => { setEditing(null); setForm(emptyForm); }}>
-              Cancel
-            </button>
-          )}
-        </div>
-      </form>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Label</th>
-              <th>Address</th>
-              <th>Percent</th>
-              <th>Active</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {wallets.map((wallet) => (
-              <tr key={wallet.id}>
-                <td>{wallet.label}</td>
-                <td className="mono">{wallet.address}</td>
-                <td>{wallet.percent}%</td>
-                <td>{wallet.active ? 'Yes' : 'No'}</td>
-                <td className="actions">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditing(wallet.id);
-                      setForm({
-                        label: wallet.label,
-                        address: wallet.address,
-                        percent: String(wallet.percent),
-                        active: Boolean(wallet.active),
-                      });
-                    }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={async () => {
-                      await deletePayoutWallet(wallet.id);
-                      await load();
-                    }}
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function Deposits() {
-  const [deposits, setDeposits] = useState([]);
-  const [error, setError] = useState('');
-
-  async function load() {
-    const data = await getDeposits();
-    setDeposits(data.deposits);
-  }
-
-  useEffect(() => {
-    load().catch((err) => setError(err.message));
-    const timer = setInterval(() => {
-      load().catch((err) => setError(err.message));
-    }, 10000);
-    return () => clearInterval(timer);
-  }, []);
-
-  return (
-    <section>
-      <header className="head">
-        <div>
-          <h1>Deposits</h1>
-          <p>Each address receives USDT and sends the split itself.</p>
-        </div>
-      </header>
-      {error && <p className="error">{error}</p>}
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Address</th>
-              <th>Status</th>
-              <th>Received</th>
-              <th>Payouts</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {deposits.map((deposit) => (
-              <tr key={deposit.id}>
-                <td className="mono">{deposit.address}</td>
-                <td>
-                  {deposit.status}
-                  {deposit.errorMessage && <div className="error">{deposit.errorMessage}</div>}
-                </td>
-                <td>{deposit.receivedAmount}</td>
-                <td>
-                  {deposit.payouts.map((payout) => (
-                    <div key={payout.id}>
-                      {payout.label} {payout.percent}% · {payout.amount} · {payout.status}
-                    </div>
-                  ))}
-                </td>
-                <td>
-                  {deposit.status !== 'completed' && (
-                    <button type="button" onClick={() => retryDeposit(deposit.id).then(load)}>
-                      Retry
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <Routes>
+      <Route path="/login" element={admin ? <Navigate to="/" replace /> : <LoginScreen onSuccess={setAdmin} />} />
+      <Route element={<RequireAdmin admin={admin} onSignOut={signOut} />}>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/users" element={<UsersPage />} />
+        <Route path="/topups" element={<TopupsPage />} />
+        <Route path="/pool" element={<PoolPage />} />
+        <Route path="/deposits" element={<DepositsPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to={admin ? '/' : '/login'} replace />} />
+    </Routes>
   );
 }
