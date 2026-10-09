@@ -1,32 +1,71 @@
 import { motion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { HiOutlineDocumentDuplicate, HiOutlineTrash } from 'react-icons/hi2';
+import { HiOutlineDocumentDuplicate, HiOutlinePlus, HiOutlineTrash } from 'react-icons/hi2';
 import Dialog from '../components/Dialog';
 import Field from '../components/Field';
 import SearchSelect from '../components/SearchSelect';
 import { FormSkeleton } from '../components/Skeleton';
 import { useRefresh } from '../hooks/useRefresh';
 import { useForm } from '../hooks/useForm';
-import { chainId, ethAddress, httpUrl, nonNegative, percentRange, privateKey } from '../lib/validators';
+import { chainId, ethAddress, httpUrl, privateKey } from '../lib/validators';
 import { getSettings, saveSettings } from '../services/api';
 
 const CHAIN_OPTIONS = [
   { value: '56', label: 'BNB Smart Chain (56)' },
   { value: '97', label: 'BNB Smart Chain Testnet (97)' },
 ];
+const NUMBER = /^-?\d+(\.\d+)?$/;
+
+function blankRange() {
+  return { id: crypto.randomUUID(), min: '', max: '', percent: '' };
+}
+
+function rangesFromSettings(settings) {
+  const rows = Array.isArray(settings?.chargeRanges) ? settings.chargeRanges : [];
+  return rows.map((row) => ({
+    id: crypto.randomUUID(),
+    min: String(row.min ?? ''),
+    max: String(row.max ?? ''),
+    percent: String(row.percent ?? ''),
+  }));
+}
+
+function rangeProblem(rows) {
+  const parsed = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const label = `Range ${index + 1}`;
+    const minText = String(rows[index].min ?? '').trim();
+    const maxText = String(rows[index].max ?? '').trim();
+    const percentText = String(rows[index].percent ?? '').trim();
+    if (!NUMBER.test(minText)) return `${label}: from must be a number`;
+    if (!NUMBER.test(maxText)) return `${label}: to must be a number`;
+    if (!NUMBER.test(percentText)) return `${label}: percent must be a number`;
+    const min = Number(minText);
+    const max = Number(maxText);
+    const percent = Number(percentText);
+    if (min < 0) return `${label}: from must be zero or greater`;
+    if (max < min) return `${label}: to must be at least the from amount`;
+    if (percent < 0 || percent > 100) return `${label}: percent must be from 0 to 100`;
+    parsed.push({ min, max, percent });
+  }
+  const ordered = [...parsed].sort((a, b) => a.min - b.min || a.max - b.max);
+  for (let index = 1; index < ordered.length; index += 1) {
+    if (ordered[index].min <= ordered[index - 1].max) {
+      return 'Charge ranges overlap. Each amount can match only one range.';
+    }
+  }
+  return '';
+}
+
 const emptyForm = {
   bscRpcUrl: '',
   chainId: '56',
   usdtContract: '',
   gasFunderPrivateKey: '',
   clearGasFunder: false,
-  chargeFlat: '0',
-  chargePercent: '0',
   platformDepositAddress: '',
 };
 const rules = {
-  chargeFlat: nonNegative('Flat charge'),
-  chargePercent: percentRange('Percent charge'),
   platformDepositAddress: ethAddress('Platform deposit address', { optional: true }),
   bscRpcUrl: httpUrl('RPC URL'),
   chainId: chainId(),
@@ -45,6 +84,8 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [ranges, setRanges] = useState([]);
+  const [rangeError, setRangeError] = useState('');
 
   useEffect(() => {
     getSettings()
@@ -56,10 +97,9 @@ export default function SettingsPage() {
           usdtContract: data.settings.usdtContract || '',
           gasFunderPrivateKey: '',
           clearGasFunder: false,
-          chargeFlat: String(data.settings.chargeFlat ?? '0'),
-          chargePercent: String(data.settings.chargePercent ?? '0'),
           platformDepositAddress: data.settings.platformDepositAddress || '',
         });
+        setRanges(rangesFromSettings(data.settings));
       })
       .catch((err) => setError(err.message))
       .finally(() => setReady(true));
@@ -77,10 +117,10 @@ export default function SettingsPage() {
         usdtContract: data.settings.usdtContract || '',
         gasFunderPrivateKey: '',
         clearGasFunder: false,
-        chargeFlat: String(data.settings.chargeFlat ?? '0'),
-        chargePercent: String(data.settings.chargePercent ?? '0'),
         platformDepositAddress: data.settings.platformDepositAddress || '',
       });
+      setRanges(rangesFromSettings(data.settings));
+      setRangeError('');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -97,7 +137,9 @@ export default function SettingsPage() {
     event.preventDefault();
     setError('');
     setNotice('');
-    if (!form.validate()) return;
+    const problem = rangeProblem(ranges);
+    setRangeError(problem);
+    if (!form.validate() || problem) return;
     setBusy(true);
     try {
       const data = await saveSettings({
@@ -106,11 +148,15 @@ export default function SettingsPage() {
         usdtContract: form.values.usdtContract.trim(),
         gasFunderPrivateKey: form.values.gasFunderPrivateKey,
         clearGasFunder: form.values.clearGasFunder,
-        chargeFlat: Number(form.values.chargeFlat),
-        chargePercent: Number(form.values.chargePercent),
+        chargeRanges: ranges.map((row) => ({
+          min: Number(row.min),
+          max: Number(row.max),
+          percent: Number(row.percent),
+        })),
         platformDepositAddress: form.values.platformDepositAddress.trim(),
       });
       setSaved(data.settings);
+      setRanges(rangesFromSettings(data.settings));
       form.replace({
         ...form.values,
         gasFunderPrivateKey: '',
@@ -150,24 +196,79 @@ export default function SettingsPage() {
 
   return (
     <motion.form className="card form-grid" noValidate onSubmit={onSubmit} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-      <Field name="chargeFlat" label="Flat charge (USDT)" error={form.error('chargeFlat')}>
-        <input
-          inputMode="decimal"
-          value={form.values.chargeFlat}
-          onChange={(event) => form.setField('chargeFlat', event.target.value)}
-          onBlur={() => form.blur('chargeFlat')}
-          placeholder="0.50"
-        />
-      </Field>
-      <Field name="chargePercent" label="Percent charge" error={form.error('chargePercent')}>
-        <input
-          inputMode="decimal"
-          value={form.values.chargePercent}
-          onChange={(event) => form.setField('chargePercent', event.target.value)}
-          onBlur={() => form.blur('chargePercent')}
-          placeholder="1"
-        />
-      </Field>
+      <section className="charge-ranges form-span" aria-labelledby="charge-ranges-title">
+        <div className="charge-ranges__top">
+          <p className="charge-ranges__label" id="charge-ranges-title">Split charge ranges</p>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => {
+              setRanges((current) => [...current, blankRange()]);
+              setRangeError('');
+            }}
+          >
+            <HiOutlinePlus />
+            Add range
+          </button>
+        </div>
+        {ranges.length === 0 && <p className="charge-ranges__empty">No ranges. The split charge is 0.</p>}
+        {ranges.map((row, index) => (
+          <div className="charge-ranges__row" key={row.id}>
+            <label>
+              From (USDT)
+              <input
+                inputMode="decimal"
+                value={row.min}
+                placeholder="1"
+                onChange={(event) => {
+                  const min = event.target.value;
+                  setRanges((current) => current.map((item) => (item.id === row.id ? { ...item, min } : item)));
+                  setRangeError('');
+                }}
+              />
+            </label>
+            <label>
+              To (USDT)
+              <input
+                inputMode="decimal"
+                value={row.max}
+                placeholder="10"
+                onChange={(event) => {
+                  const max = event.target.value;
+                  setRanges((current) => current.map((item) => (item.id === row.id ? { ...item, max } : item)));
+                  setRangeError('');
+                }}
+              />
+            </label>
+            <label>
+              Percent
+              <input
+                inputMode="decimal"
+                value={row.percent}
+                placeholder="1"
+                onChange={(event) => {
+                  const percent = event.target.value;
+                  setRanges((current) => current.map((item) => (item.id === row.id ? { ...item, percent } : item)));
+                  setRangeError('');
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="ghost danger charge-ranges__remove"
+              aria-label={`Remove range ${index + 1}`}
+              onClick={() => {
+                setRanges((current) => current.filter((item) => item.id !== row.id));
+                setRangeError('');
+              }}
+            >
+              <HiOutlineTrash />
+              Remove
+            </button>
+          </div>
+        ))}
+        {rangeError && <p className="form-alert" role="alert">{rangeError}</p>}
+      </section>
       <Field name="platformDepositAddress" label="Platform deposit address" className="form-span" error={form.error('platformDepositAddress')}>
         <input
           value={form.values.platformDepositAddress}

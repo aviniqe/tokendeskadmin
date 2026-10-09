@@ -78,7 +78,7 @@ export default function DashboardPage() {
     ['Waiting deposits', String(countStatus(deposits, 'waiting'))],
     ['Completed deposits', String(countStatus(deposits, 'completed'))],
     ['Failed deposits', String(countStatus(deposits, 'failed'))],
-    ['Flat / percent', `${money(settings?.chargeFlat)} + ${money(settings?.chargePercent)}%`],
+    ['Charge ranges', Array.isArray(settings?.chargeRanges) && settings.chargeRanges.length ? String(settings.chargeRanges.length) : 'None'],
   ];
 
   return (
