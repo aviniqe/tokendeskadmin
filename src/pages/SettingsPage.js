@@ -1,5 +1,7 @@
 import { motion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { HiOutlineDocumentDuplicate, HiOutlineTrash } from 'react-icons/hi2';
+import Dialog from '../components/Dialog';
 import Field from '../components/Field';
 import SearchSelect from '../components/SearchSelect';
 import { FormSkeleton } from '../components/Skeleton';
@@ -11,10 +13,6 @@ import { getSettings, saveSettings } from '../services/api';
 const CHAIN_OPTIONS = [
   { value: '56', label: 'BNB Smart Chain (56)' },
   { value: '97', label: 'BNB Smart Chain Testnet (97)' },
-];
-const GAS_OPTIONS = [
-  { value: 'keep', label: 'Keep the saved gas wallet' },
-  { value: 'remove', label: 'Remove the saved gas wallet' },
 ];
 const emptyForm = {
   bscRpcUrl: '',
@@ -45,6 +43,8 @@ export default function SettingsPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     getSettings()
@@ -117,6 +117,7 @@ export default function SettingsPage() {
         clearGasFunder: false,
       });
       setNotice('Settings saved.');
+      setCopied(false);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -124,7 +125,28 @@ export default function SettingsPage() {
     }
   }
 
+  async function copyGasWallet() {
+    const address = saved?.gasFunderAddress;
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+    } catch {
+      const input = document.createElement('textarea');
+      input.value = address;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      input.remove();
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1400);
+  }
+
   if (!ready) return error ? <p className="error">{error}</p> : <FormSkeleton />;
+
+  const replacing = Boolean(form.values.gasFunderPrivateKey.trim());
+  const removing = form.values.clearGasFunder && !replacing;
+  const configured = Boolean(saved?.gasFunderSet && saved?.gasFunderAddress);
 
   return (
     <motion.form className="card form-grid" noValidate onSubmit={onSubmit} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -187,22 +209,70 @@ export default function SettingsPage() {
         <input
           type="password"
           value={form.values.gasFunderPrivateKey}
-          onChange={(event) => form.setField('gasFunderPrivateKey', event.target.value)}
+          onChange={(event) => {
+            form.setField('gasFunderPrivateKey', event.target.value);
+            if (event.target.value.trim()) form.setField('clearGasFunder', false);
+          }}
           onBlur={() => form.blur('gasFunderPrivateKey')}
           placeholder={saved?.gasFunderSet ? 'Leave blank to keep the current key' : 'Paste the gas wallet private key'}
           autoComplete="off"
         />
       </Field>
-      <p className="muted form-span">{saved?.gasFunderSet ? `Current gas wallet: ${saved.gasFunderAddress}` : 'No gas wallet is configured.'}</p>
-      <Field name="clearGasFunder" label="Gas wallet" className="form-span">
-        <SearchSelect
-          value={form.values.clearGasFunder ? 'remove' : 'keep'}
-          onChange={(value) => form.setField('clearGasFunder', value === 'remove')}
-          options={GAS_OPTIONS}
-          placeholder="Choose what to do with the gas wallet"
-          searchPlaceholder="Search actions"
-        />
-      </Field>
+      <section className="gas-card form-span" aria-labelledby="gas-wallet-title">
+        <div className="gas-card__top">
+          <div>
+            <p className="gas-card__label" id="gas-wallet-title">Gas wallet</p>
+            <p className="gas-card__address mono">
+              {removing ? 'Removed when you save' : configured ? saved.gasFunderAddress : 'Not configured'}
+            </p>
+          </div>
+          <span className={`pill ${removing ? 'is-rejected' : replacing ? 'is-pending' : configured ? 'is-ok' : 'is-waiting'}`}>
+            {removing ? 'Removing' : replacing ? 'Replacing' : configured ? 'Active' : 'Not set'}
+          </span>
+        </div>
+        <div className="gas-card__actions">
+          {configured && !removing && (
+            <button type="button" className="ghost" onClick={copyGasWallet}>
+              <HiOutlineDocumentDuplicate />
+              {copied ? 'Copied' : 'Copy address'}
+            </button>
+          )}
+          {configured && !removing && !replacing && (
+            <button type="button" className="ghost danger" onClick={() => setConfirmRemove(true)}>
+              <HiOutlineTrash />
+              Remove
+            </button>
+          )}
+          {removing && (
+            <button type="button" className="ghost" onClick={() => form.setField('clearGasFunder', false)}>
+              Undo
+            </button>
+          )}
+        </div>
+      </section>
+      <Dialog
+        open={confirmRemove}
+        title="Remove this gas wallet?"
+        tone="danger"
+        icon={HiOutlineTrash}
+        onClose={() => setConfirmRemove(false)}
+      >
+        <p className="secret-value mono">{saved?.gasFunderAddress}</p>
+        <div className="actions">
+          <button type="button" className="ghost" onClick={() => setConfirmRemove(false)}>Cancel</button>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => {
+              form.setField('clearGasFunder', true);
+              form.setField('gasFunderPrivateKey', '');
+              setConfirmRemove(false);
+            }}
+          >
+            Remove on save
+          </button>
+        </div>
+      </Dialog>
       {form.summary && <p className="form-alert form-span" role="alert">{form.summary}</p>}
       {error && <p className="form-alert form-span" role="alert">{error}</p>}
       {notice && <p className="form-alert is-ok form-span">{notice}</p>}
