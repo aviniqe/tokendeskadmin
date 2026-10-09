@@ -438,6 +438,7 @@ input {
 .pill.is-expired { background: var(--pill); color: var(--muted); }
 .pill.is-approved,
 .pill.is-available { background: var(--pill-ok); color: var(--ok); }
+.status-pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .pill.is-pending,
 .pill.is-assigned,
 .pill.is-insufficient_balance { background: var(--pill-warn); color: var(--warn); }

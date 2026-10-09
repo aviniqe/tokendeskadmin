@@ -1,13 +1,13 @@
 import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { HiOutlineDocumentDuplicate, HiOutlineKey, HiOutlinePaperAirplane, HiOutlinePlus } from 'react-icons/hi2';
+import { HiOutlineDocumentDuplicate, HiOutlineKey, HiOutlineNoSymbol, HiOutlinePaperAirplane, HiOutlinePlus } from 'react-icons/hi2';
 import Dialog from '../components/Dialog';
 import Field from '../components/Field';
 import RowMenu from '../components/RowMenu';
 import { TableSkeleton } from '../components/Skeleton';
 import { useRefresh } from '../hooks/useRefresh';
 import { ethAddress, positiveAmount } from '../lib/validators';
-import { createHotWallet, getHotWallets, revealHotWallet, transferBnb, transferUsdt } from '../services/api';
+import { createHotWallet, getHotWallets, revealHotWallet, setHotWalletDisabled, transferBnb, transferUsdt } from '../services/api';
 
 function copyText(value) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
@@ -44,6 +44,8 @@ export default function PoolPage() {
   const [transferError, setTransferError] = useState('');
   const [transferHash, setTransferHash] = useState('');
   const [transferBusy, setTransferBusy] = useState(false);
+  const [disableTarget, setDisableTarget] = useState(null);
+  const [disableBusy, setDisableBusy] = useState(false);
 
   async function load() {
     const data = await getHotWallets();
@@ -137,6 +139,21 @@ export default function PoolPage() {
     }
   }
 
+  async function onToggleDisabled() {
+    if (!disableTarget) return;
+    setDisableBusy(true);
+    setError('');
+    try {
+      await setHotWalletDisabled(disableTarget.id, !disableTarget.disabled);
+      setDisableTarget(null);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDisableBusy(false);
+    }
+  }
+
   async function onCopy(id, value) {
     await copyText(value);
     setCopied(id);
@@ -178,7 +195,12 @@ export default function PoolPage() {
                   <td className="mono">{wallet.address}</td>
                   <td>{coin(wallet.usdtBalance)}</td>
                   <td>{coin(wallet.bnbBalance)}</td>
-                  <td><span className={`pill is-${wallet.status}`}>{wallet.status}</span></td>
+                  <td>
+                    <span className="status-pills">
+                      <span className={`pill is-${wallet.status}`}>{wallet.status}</span>
+                      {wallet.disabled ? <span className="pill is-rejected">Disabled</span> : null}
+                    </span>
+                  </td>
                   <td>{new Date(wallet.created_at).toLocaleString()}</td>
                   <td className="col-actions">
                     <RowMenu label="Address actions">
@@ -187,6 +209,16 @@ export default function PoolPage() {
                           <button type="button" className="ghost" onClick={() => onReveal(wallet.id, close)}>Show key</button>
                           <button type="button" className="ghost" onClick={() => openTransfer(wallet, 'bnb', close)}>Transfer BNB</button>
                           <button type="button" className="ghost" onClick={() => openTransfer(wallet, 'usdt', close)}>Transfer USDT</button>
+                          <button
+                            type="button"
+                            className={wallet.disabled ? 'ghost' : 'ghost danger'}
+                            onClick={() => {
+                              close();
+                              setDisableTarget(wallet);
+                            }}
+                          >
+                            {wallet.disabled ? 'Enable address' : 'Disable address'}
+                          </button>
                         </>
                       )}
                     </RowMenu>
@@ -198,6 +230,30 @@ export default function PoolPage() {
           </table>
         </div>
       </article>
+      <Dialog
+        open={Boolean(disableTarget)}
+        title={disableTarget?.disabled ? 'Enable this address?' : 'Disable this address?'}
+        tone={disableTarget?.disabled ? 'accent' : 'danger'}
+        icon={HiOutlineNoSymbol}
+        onClose={() => { if (!disableBusy) setDisableTarget(null); }}
+      >
+        {disableTarget && (
+          <>
+            <p className="secret-value mono">{disableTarget.address}</p>
+            <p>
+              {disableTarget.disabled
+                ? 'New deposit requests can use this address again once it is free.'
+                : 'New deposit requests will skip this address. A deposit already using it will keep going.'}
+            </p>
+            <div className="actions">
+              <button type="button" className="ghost" onClick={() => setDisableTarget(null)} disabled={disableBusy}>Cancel</button>
+              <button type="button" className={disableTarget.disabled ? 'primary' : 'danger'} onClick={onToggleDisabled} disabled={disableBusy}>
+                {disableBusy ? 'Saving…' : disableTarget.disabled ? 'Enable address' : 'Disable address'}
+              </button>
+            </div>
+          </>
+        )}
+      </Dialog>
       <Dialog open={confirming} title="Create a deposit address?" tone="accent" icon={HiOutlinePlus} onClose={() => { if (!busy) setConfirming(false); }}>
         <div className="actions">
           <button type="button" className="ghost" onClick={() => setConfirming(false)} disabled={busy}>Cancel</button>

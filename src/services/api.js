@@ -85,6 +85,10 @@ export function transferUsdt(id, body) {
   return request(`/admin/hot-wallets/${id}/transfer-usdt`, { method: 'POST', body: JSON.stringify(body) });
 }
 
+export function setHotWalletDisabled(id, disabled) {
+  return request(`/admin/hot-wallets/${id}/disabled`, { method: 'POST', body: JSON.stringify({ disabled }) });
+}
+
 export function getDeposits() {
   return request('/admin/deposits');
 }

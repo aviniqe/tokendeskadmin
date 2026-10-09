@@ -63,7 +63,7 @@ export default function DashboardPage() {
   const charges = deposits.reduce((sum, deposit) => sum + Number(deposit.chargeAmount || 0), 0);
   const poolUsdt = wallets.reduce((sum, wallet) => sum + Number(wallet.usdtBalance || 0), 0);
   const poolBnb = wallets.reduce((sum, wallet) => sum + Number(wallet.bnbBalance || 0), 0);
-  const available = countStatus(wallets, 'available');
+  const available = wallets.filter((wallet) => wallet.status === 'available' && !wallet.disabled).length;
   const assigned = countStatus(wallets, 'assigned');
 
   const stats = [
