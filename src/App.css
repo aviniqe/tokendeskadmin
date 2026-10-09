@@ -325,6 +325,25 @@
 .card__head,
 .card__row { justify-content: space-between; }
 .card__row { align-items: flex-start; }
+.pool-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.pool-funder {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.pool-funder span { color: var(--muted); font-size: 0.78rem; }
+.pool-funder strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.pool-funder .mono { overflow-wrap: anywhere; }
 .card h2 { font-size: 1.05rem; }
 .card p { margin: 0; }
 
@@ -695,6 +714,7 @@ th { color: var(--muted); font-weight: 600; }
   .collapse-btn { display: none; }
   .card__head,
   .card__row,
-  .card__row .actions { flex-direction: column; align-items: stretch; }
+  .card__row .actions,
+  .pool-head { flex-direction: column; align-items: stretch; }
   .search-select { min-width: 0; width: 100%; }
 }

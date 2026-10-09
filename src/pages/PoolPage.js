@@ -30,6 +30,7 @@ function coin(value) {
 
 export default function PoolPage() {
   const [wallets, setWallets] = useState([]);
+  const [gasFunder, setGasFunder] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -50,6 +51,7 @@ export default function PoolPage() {
   async function load() {
     const data = await getHotWallets();
     setWallets(data.wallets);
+    setGasFunder(data.gasFunder || null);
   }
 
   useEffect(() => {
@@ -168,10 +170,19 @@ export default function PoolPage() {
         <div>
           <h2>USDT address pool</h2>
         </div>
-        <button type="button" className="primary" onClick={() => setConfirming(true)} disabled={busy}>
-          <HiOutlinePlus />
-          Create address
-        </button>
+        <div className="pool-head">
+          {gasFunder && (
+            <div className="pool-funder">
+              <span>BNB funder</span>
+              <strong>{coin(gasFunder.bnbBalance)} BNB</strong>
+              <span className="mono">{gasFunder.address}</span>
+            </div>
+          )}
+          <button type="button" className="primary" onClick={() => setConfirming(true)} disabled={busy}>
+            <HiOutlinePlus />
+            Create address
+          </button>
+        </div>
       </article>
       {error && <p className="form-alert" role="alert">{error}</p>}
       <article className="card">
